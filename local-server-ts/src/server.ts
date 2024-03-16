@@ -4,15 +4,26 @@ import { exec } from "child_process";
 import { parse } from "url";
 import { play, type MusicData } from "midisender/dist/playmidi.js";
 
-let currentKill: null | (() => void) = null;
+let killLiveNotes: null | (() => void) = null;
+let swapInData: null | ((data: MusicData) => void) = null;
 
 async function playMusic(music: MusicData) {
-  if (currentKill) {
-    currentKill();
-  }
   await fs.writeFile("notes.json", JSON.stringify(music));
-  currentKill = await play(music);
-  // return kill;
+  if (swapInData) {
+    swapInData(music);
+  } else {
+    const playFunctions = await play(music);
+    killLiveNotes = playFunctions.killLiveNotes;
+    swapInData = playFunctions.swapInData;
+  }
+}
+
+function stopMusic() {
+  if (killLiveNotes) {
+    killLiveNotes();
+    killLiveNotes = null;
+    swapInData = null;
+  }
 }
 
 const requestHandler = async (
@@ -21,7 +32,6 @@ const requestHandler = async (
 ) => {
   const parsedUrl = parse(req.url!, true);
 
-  // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "OPTIONS, GET, POST");
   res.setHeader(
@@ -44,27 +54,28 @@ const requestHandler = async (
   } else if (req.method === "POST") {
     let body = "";
     req.on("data", (chunk) => {
-      body += chunk.toString(); // convert Buffer to string
+      body += chunk.toString();
     });
     req.on("end", async () => {
-      console.log(body);
       const data = JSON.parse(body);
       if (data.music) {
-        const music = data.music;
-        console.log("MUSIC:", music);
-        // Uncomment the next line to actually play music
-        playMusic(music);
+        playMusic(data.music);
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end(JSON.stringify({ message: "Sending a reply, post-haste!" }));
       } else if (data.stop) {
-        if (currentKill) {
-          currentKill();
-        }
+        stopMusic();
         res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end(JSON.stringify({ message: "should have stopped. "}))
+        res.end(JSON.stringify({ message: "should have stopped. " }));
+      } else if (data.test) {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end(
+          JSON.stringify({
+            message: `test response - ${Math.floor(Math.random() * 10000)}`,
+          })
+        );
       } else {
-        res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end(JSON.stringify({ message: "huh?"}))
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end(JSON.stringify({ message: "huh?" }));
       }
     });
   }

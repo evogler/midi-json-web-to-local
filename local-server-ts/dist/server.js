@@ -1,23 +1,15 @@
 import * as http from "http";
 import { promises as fs } from "fs";
 import { parse } from "url";
-import { play } from "midisender/src/playmidi";
+import { play } from "midisender/dist/playmidi.js";
+let currentKill = null;
 async function playMusic(music) {
+    if (currentKill) {
+        currentKill();
+    }
     await fs.writeFile("notes.json", JSON.stringify(music));
-    const kill = play(music);
-    return kill;
-    // exec(
-    //   "node /Users/eric/Workspace/midisender/dist/main notes.json",
-    //   (error, stdout, stderr) => {
-    //     if (error) {
-    //       console.error(`exec error: ${error}`);
-    //       return;
-    //     }
-    //     console.log(`stdout: ${stdout}`);
-    //     console.error(`stderr: ${stderr}`);
-    //   }
-    // );
-    // return "Playing music";
+    currentKill = await play(music);
+    // return kill;
 }
 const requestHandler = async (req, res) => {
     const parsedUrl = parse(req.url, true);
@@ -44,12 +36,26 @@ const requestHandler = async (req, res) => {
         req.on("end", async () => {
             console.log(body);
             const data = JSON.parse(body);
-            const music = data.music;
-            console.log("MUSIC:", music);
-            // Uncomment the next line to actually play music
-            await playMusic(music);
-            res.writeHead(200, { "Content-Type": "text/plain" });
-            res.end(JSON.stringify({ message: "Sending a reply, post-haste!" }));
+            if (data.music) {
+                const music = data.music;
+                console.log("MUSIC:", music);
+                // Uncomment the next line to actually play music
+                playMusic(music);
+                res.writeHead(200, { "Content-Type": "text/plain" });
+                res.end(JSON.stringify({ message: "Sending a reply, post-haste!" }));
+            }
+            else if (data.stop) {
+                if (currentKill) {
+                    currentKill();
+                }
+                res.writeHead(200, { "Content-Type": "text/plain" });
+                res.end(JSON.stringify({ message: "should have stopped. " }));
+                console.log('should have sent message of stopping');
+            }
+            else {
+                res.writeHead(200, { "Content-Type": "text/plain" });
+                res.end(JSON.stringify({ message: "huh?" }));
+            }
         });
     }
 };
