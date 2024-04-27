@@ -15,6 +15,11 @@ const config: Config = {
       },
     },
   },
+  // safelist: [
+  //   'bg-blue-500',
+  //   'opacity-100',
+  //   'opacity-50',
+  // ],
   plugins: [],
 };
 export default config;

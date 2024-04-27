@@ -1,20 +1,42 @@
 import * as http from "http";
 import { promises as fs } from "fs";
-import { exec } from "child_process";
+// import { exec } from "child_process";
 import { parse } from "url";
-import { play, type MusicData } from "midisender/dist/playmidi.js";
+// import { Server } from "ws";
+import WebSocket, { WebSocketServer } from 'ws';
+import {
+  MidiPlayer,
+  type MusicData,
+  EventCallbackData,
+} from "midisender/dist/playmidi.js";
+
+const wss = new WebSocketServer({ port: 8081 });
+let sendToWs: (message: string) => void;
 
 let killLiveNotes: null | (() => void) = null;
 let swapInData: null | ((data: MusicData) => void) = null;
+let player: MidiPlayer | undefined;
 
 async function playMusic(music: MusicData) {
   await fs.writeFile("notes.json", JSON.stringify(music));
-  if (swapInData) {
-    swapInData(music);
+  if (player) {
+    player.swapInData(music);
+    player.play();
   } else {
-    const playFunctions = await play(music);
-    killLiveNotes = playFunctions.killLiveNotes;
-    swapInData = playFunctions.swapInData;
+    player = new MidiPlayer(music, () => {});
+    player.setEventCallback(({ id, status }: EventCallbackData) => {
+      const message = `${status}: ${id}`;
+      console.log('triggering locally:', message);
+      sendToWs(message);
+    });
+    player.play();
+    killLiveNotes = () => {
+      if (player) player.killAndFinish();
+      player = undefined;
+    };
+    swapInData = (data: MusicData) => {
+      if (player) player.swapInData(data);
+    };
   }
 }
 
@@ -88,6 +110,19 @@ export const main = () => {
   server.listen(port, "localhost", () => {
     console.log(`Server started on localhost:${port}...`);
   });
+
+  wss.on("connection", (ws) => {
+    ws.on("message", (message: string) => {
+      console.log("received: %s", message);
+    });
+    sendToWs = (message: string) => {
+      ws.send(message);
+      console.log('sent message to ws:', message)
+    };
+    console.log("Server started on port 8081");
+  });
+
+  console.log('main completed')
 };
 
 main();

@@ -91,6 +91,8 @@ export const DrumGrid = <T,>({
               return (
                 <button
                   key={j}
+                  data-cell-id={`${i}-${rows[j]}`}
+                  className={`border-black border-[.5px] ${grid[i][j] ? "bg-blue-500" : "bg-white"} transition-colors`}
                   onClick={() => {
                     const newGrid = [...grid];
                     newGrid[i][j] = !newGrid[i][j];
@@ -99,10 +101,11 @@ export const DrumGrid = <T,>({
                     console.log("set pattern to", gridToPattern(newGrid, rows));
                   }}
                   style={{
-                    border: "1px solid black",
+                    // border: "1px solid black",
                     width: `${widths[i]}px`,
                     height: "20px",
-                    backgroundColor: grid[i][j] ? "#880" : "white",
+                    // transition: '.5s',
+                    // backgroundColor: grid[i][j] ? "#880" : "white",
                   }}
                 />
               );

@@ -11,6 +11,7 @@ interface Note {
   channel: number;
   time: number;
   duration: number;
+  callbackId?: string;
 }
 
 interface MusicData {
@@ -60,6 +61,7 @@ const makeDrumBeat = (
   timePattern: number[],
   drumPattern: DrumSound[][]
 ): Note[] => {
+  console.log("makeDrumBeat", drumPattern, timePattern);
   const notes: Note[] = [];
   const volumePattern: number[] = "100 40 80 40"
     .split(" ")
@@ -69,7 +71,11 @@ const makeDrumBeat = (
   for (let i = 0; i < 5000; i++) {
     const patternPos = i % drumPattern.length;
     const patternNotes = drumPattern[patternPos];
+    if (i < 20) console.log("outer loop", patternNotes);
     patternNotes.forEach((sound, j) => {
+      if (i < 20) {
+        console.log("inner loop", i, j, sound, time);
+      }
       notes.push({
         pitch: drumNumbers[sound],
         // velocity: volumePattern[i % volumePattern.length],
@@ -77,10 +83,12 @@ const makeDrumBeat = (
         channel: 9,
         time,
         duration: 0.1,
+        callbackId: `${i % drumPattern.length}-${sound}`,
       });
     });
     time += timePattern[i % timePattern.length];
   }
+  console.log("makeDrumBeat results", notes);
   return notes;
 };
 
@@ -114,6 +122,7 @@ const makeBassLine = (
 };
 
 const playMusic = async (music: MusicData) => {
+  console.log("playing", music.notes.slice(0, 30));
   let res = "";
   await fetch("http://localhost:8251", {
     method: "POST",
@@ -231,9 +240,8 @@ export default function Home() {
   const handlePlay = useCallback(async () => {
     const startTime = new Date().getTime();
     const drumBeat = makeDrumBeat(timePattern, drumPattern);
-    const bassLine = drumBeat.concat(
-      makeBassLine(bassTAndP, timePattern, bassColumnCount)
-    );
+    const bassLine = makeBassLine(bassTAndP, timePattern, bassColumnCount);
+
     const allParts = [...drumBeat, ...bassLine];
     allParts.sort((a, b) => a.time - b.time);
     const res = await playMusic({ bpm, notes: allParts });
@@ -261,6 +269,59 @@ export default function Home() {
       }
     });
   }, [drumColumnCount]);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  useEffect(() => {
+    if (wsRef.current) {
+      // console.log("skipping useEffect");
+      // return;
+    }
+    const ws = new WebSocket("ws://localhost:8081");
+    wsRef.current = ws;
+    console.log("NOT skipping useEffect");
+
+    ws.onopen = () => {
+      console.log("Connected to the server");
+      ws.send("hi from the client!");
+    };
+
+    ws.onmessage = (event) => {
+      const { data } = event;
+      if (data.indexOf("noteon") > -1) {
+        const id = data.split("noteon: ")[1];
+        setTimeout(() => {
+          const cell = document.querySelector(`[data-cell-id="${id}"]`);
+          if (!cell) return;
+          // @ts-expect-error Property 'style' does not exist on type 'Element'.
+          cell.style.transition = "background-color 0.0s";
+          cell.classList.add("bg-blue-300");
+        }, 50);
+        // console.log(`Message from server: ${data}`);
+      } else if (data.indexOf("noteoff") > -1) {
+        const id = data.split("noteoff: ")[1];
+        setTimeout(() => {
+          const cell = document.querySelector(`[data-cell-id="${id}"]`);
+          if (!cell) return;
+          // @ts-expect-error Property 'style' does not exist on type 'Element'.
+          cell.style.transition = "background-color 0.15s";
+          cell.classList.remove("bg-blue-300");
+        }, 150);
+        // console.log(`Message from server: ${data}`);
+      }
+    };
+
+    ws.onerror = (error: Event) => {
+      console.error("WebSocket error:", error);
+    };
+
+    ws.onclose = () => {
+      console.log("Disconnected from server");
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center space-y-4 bg-slate-900 p-24">
